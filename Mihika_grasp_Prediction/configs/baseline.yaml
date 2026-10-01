@@ -1,0 +1,29 @@
+seed: 42
+
+data:
+  # Change this to the folder that contains Cornell files such as:
+  # pcd0100r.png, pcd0100d.tiff, and pcd0100cpos.txt.
+  root: data/cornell
+  input_mode: rgbd  # one of: rgb, depth, rgbd
+  image_size: 300
+  val_split: 0.15
+  test_split: 0.15
+  num_workers: 0
+
+training:
+  epochs: 100
+  batch_size: 8
+  learning_rate: 0.001
+  weight_decay: 0.00001
+  device: cuda
+  checkpoint_dir: checkpoints
+  log_path: outputs/train_log.csv
+
+loss:
+  quality_weight: 1.0
+  angle_weight: 1.0
+  width_weight: 0.5
+
+evaluation:
+  iou_threshold: 0.25
+  angle_threshold_degrees: 30.0
