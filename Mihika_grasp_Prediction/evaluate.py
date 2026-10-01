@@ -14,6 +14,7 @@ from tqdm import tqdm
 
 from data import CornellGraspDataset
 from models import GGCNNBaseline
+from train import compute_loss
 from utils.config import load_config
 from utils.geometry import angle_difference, polygon_iou
 from utils.prediction import rectangle_from_output
@@ -32,7 +33,9 @@ def load_checkpoint_and_config(
     config_path: str | Path | None,
     device: torch.device,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
+    # Keep checkpoint deserialization on CPU; model weights are copied to the
+    # selected device when load_state_dict is called below.
+    checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
     if config_path is not None:
         config = load_config(config_path)
     else:
@@ -69,11 +72,21 @@ def main() -> None:
 
     correct = 0
     total = 0
+    loss_totals = {"loss": 0.0, "quality_loss": 0.0, "angle_loss": 0.0, "width_loss": 0.0}
+    loss_weights = config.get("loss", {})
     for batch in tqdm(loader, desc="evaluate"):
         index = int(batch["index"].item())
-        image = batch["image"].to(device)
+        batch = {
+            key: value.to(device) if torch.is_tensor(value) else value
+            for key, value in batch.items()
+        }
+        image = batch["image"]
         with torch.no_grad():
             outputs = model(image)
+            _, losses = compute_loss(outputs, batch, loss_weights)
+
+        for name, value in losses.items():
+            loss_totals[name] += value
         pred_rect, pred_angle = rectangle_from_output(outputs, dataset.image_size)
 
         matched = False
@@ -89,6 +102,8 @@ def main() -> None:
 
     accuracy = correct / max(total, 1)
     print(f"samples={total}")
+    for name, value in loss_totals.items():
+        print(f"test_{name}={value / max(total, 1):.6f}")
     print(f"correct={correct}")
     print(f"accuracy={accuracy:.4f}")
     print(f"iou_threshold={iou_threshold:.2f}")
